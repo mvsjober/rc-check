@@ -3,9 +3,14 @@
 import argparse
 import os
 import sys
+from datetime import datetime, timezone
 from requests import sessions
 from pprint import pprint
 from rocketchat_API.rocketchat import RocketChat
+
+serverurl = os.environ.get('RC_SERVER')
+username = os.environ.get('RC_USERNAME')
+password = os.environ.get('RC_PASSWORD')
 
 
 def print_item(s, verbose):
@@ -25,10 +30,26 @@ def print_item(s, verbose):
         pprint(s)
 
 
+def print_history(h, verbose):
+    global serverurl
+    
+    if h is not None and h['success']:
+        msgs = h['messages']
+        for m in reversed(msgs):
+            pre = ''
+            if 'tmid' in m:
+                pre = '- '
+            msg = m['msg']
+            if len(msg) == 0 and 'attachments' in m:
+                msg = m['attachments'][0]['description'] + ' <' + serverurl + m['attachments'][0]['image_url'] + '>'
+            print(pre + "[" + m['u']['username'] + "]: "+ msg)
+            if verbose:
+                pprint(m)
+
+
 def main(args):
-    serverurl = os.environ.get('RC_SERVER')
-    username = os.environ.get('RC_USERNAME')
-    password = os.environ.get('RC_PASSWORD')
+    timestamp = None  # should read this from file
+    # timenow = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%MZ")
 
     if username is None or password is None:
         print('ERROR: server URL, username and password must be set with '
@@ -73,11 +94,19 @@ def main(args):
             print('Private messages')
             for s in privmsgs:
                 print_item(s, args.verbose)
+                his = rocket.im_history(room_id=s['rid'], count=4, oldest=timestamp).json()
+                print_history(his, args.verbose)
 
         if len(chanmsgs) > 0:
             print('Channels and discussions:')
             for s in chanmsgs:
                 print_item(s, args.verbose)
+                his = None
+                if s['t'] == 'p':
+                    his = rocket.groups_history(room_id=s['rid'], count=4, oldest=timestamp).json()
+                elif s['t'] == 'c':
+                    his = rocket.channels_history(room_id=s['rid'], count=4, oldest=timestamp).json()
+                print_history(his, args.verbose)
 
 
 if __name__ == "__main__":
