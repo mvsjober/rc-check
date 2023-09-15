@@ -11,34 +11,40 @@ from rocketchat_API.rocketchat import RocketChat
 serverurl = os.environ.get('RC_SERVER')
 username = os.environ.get('RC_USERNAME')
 password = os.environ.get('RC_PASSWORD')
+verbose = False
 
-
-def print_item(s, verbose):
-    cnt = ' '
+def print_item(s):
+    t = s['t']
+    if t == 'd':
+        l = '@'
+    else:
+        l = '#'
+        
+    cnt = ''
     if 'tunread' in s and len(s['tunread']) > 0:
-        cnt = len(s['tunread'])
+        cnt += "[T:{}]".format(len(s['tunread']))
 
     if 'unread' in s and s['unread'] > 0:
-        cnt = f"[{s['unread']}]"
+        cnt += "[{}]".format(s['unread'])
 
     name = s['name']
     if 'fname' in s:
         name = s['fname']
 
-    print(cnt, name)
+    print(l + name, cnt)
     if verbose:
         pprint(s)
 
 
-def print_history(h, verbose):
+def print_history(h):
     global serverurl
     
     if h is not None and h['success']:
         msgs = h['messages']
         for m in reversed(msgs):
-            pre = ''
+            pre = '- '
             if 'tmid' in m:
-                pre = '- '
+                pre = '-- '
             msg = m['msg']
             if len(msg) == 0 and 'attachments' in m:
                 msg = m['attachments'][0]['description'] + ' <' + serverurl + m['attachments'][0]['image_url'] + '>'
@@ -46,6 +52,18 @@ def print_history(h, verbose):
             if verbose:
                 pprint(m)
 
+
+def print_msg(m):
+    pre = '- '
+    if 'tmid' in m:
+        pre = '-- '
+    msg = m['msg']
+    if len(msg) == 0 and 'attachments' in m:
+        msg = m['attachments'][0]['description'] + ' <' + serverurl + m['attachments'][0]['image_url'] + '>'
+    print(pre + "[" + m['u']['username'] + "]: "+ msg)
+    if verbose:
+        pprint(m)
+    
 
 def main(args):
     timestamp = None  # should read this from file
@@ -87,26 +105,49 @@ def main(args):
                     privmsgs.append(s)
                 else:
                     print('WARNING: unknown subscription type: ' + t)
-                    if args.verbose:
+                    if verbose:
                         pprint(s)
 
         if len(privmsgs) > 0:
-            print('Private messages')
             for s in privmsgs:
-                print_item(s, args.verbose)
-                his = rocket.im_history(room_id=s['rid'], count=4, oldest=timestamp).json()
-                print_history(his, args.verbose)
+                print_item(s)
+                count = 0
+                if 'tunread' in s:
+                    count += len(s['tunread'])
+                if 'unread' in s:
+                    count += s['unread']
+                if count == 0:
+                    count = 1
+
+                his = rocket.im_history(room_id=s['rid'], count=count, oldest=timestamp).json()
+                print_history(his)
 
         if len(chanmsgs) > 0:
-            print('Channels and discussions:')
             for s in chanmsgs:
-                print_item(s, args.verbose)
+                print_item(s)
+                count = 0
+                if 'tunread' in s:
+                    count += len(s['tunread'])
+                if 'unread' in s:
+                    count += s['unread']
+                if count == 0:
+                    count = 1
+                    
+                #     for t in s['tunread']:
+                #         m = rocket.chat_get_message(msg_id=t).json()['message']
+                #         print_msg(m)
+                #         for r in m['replies']:
+                #             print(r)
+                #             rm = rocket.chat_get_thread_message(tmid=r, tlm=m['tlm']).json()
+                #             pprint(rm)
+                #             print_msg(rm)
+
                 his = None
                 if s['t'] == 'p':
-                    his = rocket.groups_history(room_id=s['rid'], count=4, oldest=timestamp).json()
+                    his = rocket.groups_history(room_id=s['rid'], count=count, oldest=timestamp).json()
                 elif s['t'] == 'c':
-                    his = rocket.channels_history(room_id=s['rid'], count=4, oldest=timestamp).json()
-                print_history(his, args.verbose)
+                    his = rocket.channels_history(room_id=s['rid'], count=count, oldest=timestamp).json()
+                print_history(his)
 
 
 if __name__ == "__main__":
@@ -117,4 +158,6 @@ if __name__ == "__main__":
                         'not just threads and favorites')
 
     args = parser.parse_args()
+    verbose = args.verbose
+    
     main(args)
