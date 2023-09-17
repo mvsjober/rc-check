@@ -133,14 +133,16 @@ def main(args):
                 if count == 0:
                     count = 1
                     
-                #     for t in s['tunread']:
-                #         m = rocket.chat_get_message(msg_id=t).json()['message']
-                #         print_msg(m)
-                #         for r in m['replies']:
-                #             print(r)
-                #             rm = rocket.chat_get_thread_message(tmid=r, tlm=m['tlm']).json()
-                #             pprint(rm)
-                #             print_msg(rm)
+                # for t in s['tunread']:
+                #     m = rocket.chat_get_message(msg_id=t).json()['message']
+                #     print_msg(m)
+                #     # for r in m['replies']:
+                #     #     print(r, m['tlm'])
+                #     rm = rocket.chat_get_thread_message(tmid=t, tlm=m['tlm'], count=len(s['tunread']), sort='{"ts": -1}').json()
+                #     #print(m['tlm'])
+                #     #pprint(rm)
+                #     for tm in rm['messages']:
+                #         print_msg(tm)
 
                 his = None
                 if s['t'] == 'p':
