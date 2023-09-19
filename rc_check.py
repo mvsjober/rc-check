@@ -13,6 +13,7 @@ username = os.environ.get('RC_USERNAME')
 password = os.environ.get('RC_PASSWORD')
 verbose = False
 
+
 def print_item(s):
     t = s['t']
     if t == 'd':
@@ -22,53 +23,44 @@ def print_item(s):
         
     cnt = ''
     if 'tunread' in s and len(s['tunread']) > 0:
-        cnt += "[T:{}]".format(len(s['tunread']))
+        cnt += "[thread replies:{}]".format(len(s['tunread']))
 
     if 'unread' in s and s['unread'] > 0:
-        cnt += "[{}]".format(s['unread'])
+        cnt += "[unread:{}]".format(s['unread'])
 
+    if 'userMentions' in s and s['userMentions'] > 0:
+        cnt += "[user mentions:{}]".format(s['userMentions'])
+        
+    if 'groupMentions' in s and s['groupMentions'] > 0:
+        cnt += "[group mentions:{}]".format(s['groupMentions'])
+        
     name = s['name']
     if 'fname' in s:
         name = s['fname']
+    if 'f' in s and s['f']:
+        name += " ★"
 
     print(l + name, cnt)
     if verbose:
         pprint(s)
 
 
-def print_history(h):
-    global serverurl
-    
-    if h is not None and h['success']:
-        msgs = h['messages']
-        for m in reversed(msgs):
-            pre = '- '
-            if 'tmid' in m:
-                pre = '-- '
-            msg = m['msg']
-            if len(msg) == 0 and 'attachments' in m:
-                msg = m['attachments'][0]['description'] + ' <' + serverurl + m['attachments'][0]['image_url'] + '>'
-            print(pre + "[" + m['u']['username'] + "]: "+ msg)
-            if verbose:
-                pprint(m)
+def print_msg(m, pre=None, post='', clip=None):
+    if pre is None:
+        pre = '-- ' if 'tmid' in m else '- '
 
-
-def print_msg(m):
-    pre = '- '
-    if 'tmid' in m:
-        pre = '-- '
     msg = m['msg']
     if len(msg) == 0 and 'attachments' in m:
         msg = m['attachments'][0]['description'] + ' <' + serverurl + m['attachments'][0]['image_url'] + '>'
-    print(pre + "[" + m['u']['username'] + "]: "+ msg)
+
+    if clip is not None:
+        msg = msg[:clip].replace('\n', ' ') + "..."
+    print(pre + "[" + m['u']['username'] + "]: "+ msg + post)
     if verbose:
         pprint(m)
     
 
 def main(args):
-    timestamp = None  # should read this from file
-    # timenow = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%MZ")
-
     if username is None or password is None:
         print('ERROR: server URL, username and password must be set with '
               'RC_SERVER, RC_USERNAME and RC_PASSWORD environment variables.')
@@ -87,12 +79,15 @@ def main(args):
 
         for s in subs['update']:
             if s['alert']:
-                t = s['t']  # type, e.g. channel or privmsg
+                t = s['t']  # type: channel (c) or private group (p)
+                            # or direct message (d)
                 if t == 'c' or t == 'p':
-                    show = args.all
-                    
-                    if 'f' in s and s['f']:  # favorites always shown
+                    # Unless --all flag is set, show only favourite
+                    # channels
+                    if args.all:
                         show = True
+                    else:
+                        show = s.get('f', False)
 
                     # always show thread replies
                     if 'tunread' in s and len(s['tunread']) > 0:
@@ -105,51 +100,52 @@ def main(args):
                     privmsgs.append(s)
                 else:
                     print('WARNING: unknown subscription type: ' + t)
-                    if verbose:
-                        pprint(s)
-
+                        
         if len(privmsgs) > 0:
             for s in privmsgs:
                 print_item(s)
-                count = 0
-                if 'tunread' in s:
-                    count += len(s['tunread'])
-                if 'unread' in s:
-                    count += s['unread']
-                if count == 0:
-                    count = 1
+                timestamp = s['ls']
+                h = rocket.im_history(room_id=s['rid'],
+                                        oldest=timestamp).json()
+                if h is not None and h['success']:
+                    for m in reversed(h['messages']):
+                        print_msg(m)
 
-                his = rocket.im_history(room_id=s['rid'], count=count, oldest=timestamp).json()
-                print_history(his)
+                print()
 
         if len(chanmsgs) > 0:
+            prev_tmid = None
             for s in chanmsgs:
                 print_item(s)
-                count = 0
-                if 'tunread' in s:
-                    count += len(s['tunread'])
-                if 'unread' in s:
-                    count += s['unread']
-                if count == 0:
-                    count = 1
-                    
-                # for t in s['tunread']:
-                #     m = rocket.chat_get_message(msg_id=t).json()['message']
-                #     print_msg(m)
-                #     # for r in m['replies']:
-                #     #     print(r, m['tlm'])
-                #     rm = rocket.chat_get_thread_message(tmid=t, tlm=m['tlm'], count=len(s['tunread']), sort='{"ts": -1}').json()
-                #     #print(m['tlm'])
-                #     #pprint(rm)
-                #     for tm in rm['messages']:
-                #         print_msg(tm)
-
-                his = None
+                timestamp = s['ls']
+                tunread = s.get('tunread', [])
+                fav = s.get('f', False)
+                
+                h = None
                 if s['t'] == 'p':
-                    his = rocket.groups_history(room_id=s['rid'], count=count, oldest=timestamp).json()
+                    h = rocket.groups_history(room_id=s['rid'],
+                                              oldest=timestamp).json()
                 elif s['t'] == 'c':
-                    his = rocket.channels_history(room_id=s['rid'], count=count, oldest=timestamp).json()
-                print_history(his)
+                    h = rocket.channels_history(room_id=s['rid'],
+                                                oldest=timestamp).json()
+
+                if h is not None and h['success']:
+                    msgs = h['messages']
+                    for m in reversed(msgs):
+                        if 'tmid' not in m:
+                            if fav or args.all:
+                                print_msg(m)
+                                prev_tmid = m['_id']
+                        else:
+                            is_tunread = m['tmid'] in tunread
+                            if args.all or is_tunread:
+                                if prev_tmid is None or prev_tmid != m['tmid']:
+                                    p = rocket.chat_get_message(msg_id=m['tmid']).json()['message']
+                                    print_msg(p, pre='(', post=')', clip=50)
+                                print_msg(m)
+                                prev_tmid = None
+
+                print()
 
 
 if __name__ == "__main__":
