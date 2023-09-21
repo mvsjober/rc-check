@@ -23,16 +23,16 @@ def print_item(s):
         
     cnt = ''
     if 'tunread' in s and len(s['tunread']) > 0:
-        cnt += "[thread replies:{}]".format(len(s['tunread']))
+        cnt += " [thread replies:{}]".format(len(s['tunread']))
 
     if 'unread' in s and s['unread'] > 0:
-        cnt += "[unread:{}]".format(s['unread'])
+        cnt += " [unread:{}]".format(s['unread'])
 
     if 'userMentions' in s and s['userMentions'] > 0:
-        cnt += "[user mentions:{}]".format(s['userMentions'])
+        cnt += " [user mentions:{}]".format(s['userMentions'])
         
     if 'groupMentions' in s and s['groupMentions'] > 0:
-        cnt += "[group mentions:{}]".format(s['groupMentions'])
+        cnt += " [group mentions:{}]".format(s['groupMentions'])
         
     name = s['name']
     if 'fname' in s:
@@ -50,8 +50,15 @@ def print_msg(m, pre=None, post='', clip=None):
         pre = '-- ' if 'tmid' in m else '- '
 
     msg = m['msg']
-    if len(msg) == 0 and 'attachments' in m:
-        msg = m['attachments'][0]['description'] + ' <' + serverurl + m['attachments'][0]['image_url'] + '>'
+    # if len(msg) == 0 and 'attachments' in m:
+    #     msg = m['attachments'][0]['description'] + ' <' + serverurl + m['attachments'][0]['image_url'] + '>'
+
+    if 'attachments' in m:
+        for a in m['attachments']:
+            if 'image_url' in a:
+                msg += '\n' + ' '*len(pre) + '> '+ a['description'] + ' <' + serverurl + a['image_url'] + '>'
+            elif 'text' in a:
+                msg += '\n' + ' '*len(pre) + '> '+ a['text']
 
     if clip is not None:
         msg = msg[:clip].replace('\n', ' ') + "..."
@@ -121,13 +128,16 @@ def main(args):
                 tunread = s.get('tunread', [])
                 fav = s.get('f', False)
                 
-                h = None
                 if s['t'] == 'p':
                     h = rocket.groups_history(room_id=s['rid'],
                                               oldest=timestamp).json()
                 elif s['t'] == 'c':
-                    h = rocket.channels_history(room_id=s['rid'],
+                    h = rocket.channels_history(room_id=s['rid'], 
                                                 oldest=timestamp).json()
+                    # h = rocket.channel_messages(room_id=s['rid'], query={"_updatedAt":{"$gt":{"$date": timestamp}}}).json()
+
+                if args.verbose:
+                    pprint(h)
 
                 if h is not None and h['success']:
                     msgs = h['messages']
@@ -143,7 +153,7 @@ def main(args):
                                     p = rocket.chat_get_message(msg_id=m['tmid']).json()['message']
                                     print_msg(p, pre='(', post=')', clip=50)
                                 print_msg(m)
-                                prev_tmid = None
+                                prev_tmid = m['tmid']
 
                 print()
 
